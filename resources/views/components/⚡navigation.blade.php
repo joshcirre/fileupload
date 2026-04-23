@@ -3,8 +3,7 @@
 use App\Livewire\Actions\Logout;
 use Livewire\Component;
 
-new class extends Component
-{
+new class extends Component {
     public function logout(Logout $logout): void
     {
         $logout();

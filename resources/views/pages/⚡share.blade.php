@@ -5,8 +5,7 @@ use Illuminate\Support\Number;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-new #[Layout('layouts::auth')] class extends Component
-{
+new #[Layout('layouts::auth')] class extends Component {
     public Share $share;
 
     public function mount(Share $share): void
@@ -51,6 +50,7 @@ new #[Layout('layouts::auth')] class extends Component
                         @if ($share->expires_at)
                             · expires {{ $share->expires_at->diffForHumans() }}
                         @endif
+
                         @if ($share->delete_after_first_download)
                             · one-time download
                         @endif
@@ -58,12 +58,7 @@ new #[Layout('layouts::auth')] class extends Component
                 </div>
             </div>
 
-            <flux:button
-                variant="primary"
-                icon="arrow-down-tray"
-                href="{{ route('share.download', ['share' => $share->id]) }}"
-                class="w-full"
-            >
+            <flux:button variant="primary" icon="arrow-down-tray" href="{{ route('share.download', ['share' => $share->id]) }}" class="w-full">
                 Download
             </flux:button>
         @endif

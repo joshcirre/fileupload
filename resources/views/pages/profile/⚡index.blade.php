@@ -10,8 +10,7 @@ use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-new #[Layout('layouts::app')] class extends Component
-{
+new #[Layout('layouts::app')] class extends Component {
     public string $name = '';
 
     public string $email = '';
@@ -118,7 +117,7 @@ new #[Layout('layouts::app')] class extends Component
 
                     <flux:input wire:model="email" label="Email" type="email" placeholder="Your email address" required />
 
-                    @if (auth()->user() instanceof \Illuminate\Contracts\Auth\MustVerifyEmail && ! auth()->user()->hasVerifiedEmail())
+                    @if (auth()->user() instanceof \Illuminate\Contracts\Auth\MustVerifyEmail &&! auth()->user()->hasVerifiedEmail())
                         <div>
                             <p class="text-sm text-gray-800">
                                 Your email address is unverified.

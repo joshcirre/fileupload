@@ -30,7 +30,7 @@
         "laravel/sail": "^1.41",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.0",
-        "peckphp/peck": "^0.1.0",
+        "peckphp/peck": "^0.3.0",
         "pestphp/pest": "^4.0",
         "pestphp/pest-plugin-laravel": "^4.0",
         "rector/rector": "^2.0"
@@ -123,9 +123,11 @@
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
-    "repositories": [{
-        "name": "flux-pro",
-        "type": "composer",
-        "url": "https://composer.fluxui.dev"
-    }]
+    "repositories": [
+        {
+            "name": "flux-pro",
+            "type": "composer",
+            "url": "https://composer.fluxui.dev"
+        }
+    ]
 }

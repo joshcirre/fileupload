@@ -8,8 +8,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-new #[Layout('layouts::app')] class extends Component
-{
+new #[Layout('layouts::app')] class extends Component {
     public function delete(Share $share): void
     {
         Gate::authorize('delete', $share);
@@ -36,9 +35,7 @@ new #[Layout('layouts::app')] class extends Component
             <flux:heading size="xl">Your shares</flux:heading>
             <flux:subheading>Links you've created, their status, and the download counts.</flux:subheading>
         </div>
-        <flux:button variant="primary" icon="arrow-up-tray" href="{{ route('home') }}" wire:navigate>
-            New share
-        </flux:button>
+        <flux:button variant="primary" icon="arrow-up-tray" href="{{ route('home') }}" wire:navigate>New share</flux:button>
     </div>
 
     @if ($this->shares->isEmpty())
@@ -95,10 +92,14 @@ new #[Layout('layouts::app')] class extends Component
                                                 size="sm"
                                                 variant="ghost"
                                                 icon="link"
-                                                x-on:click="navigator.clipboard.writeText(@js(route('share.show', ['share' => $share->id]))); $flux.toast({ text: 'Link copied', variant: 'success' })"
+                                                x-on:click="
+                                                    navigator.clipboard.writeText(@js(route('share.show', ['share' => $share->id])))
+                                                    $flux.toast({ text: 'Link copied', variant: 'success' })
+                                                "
                                             />
                                         </flux:tooltip>
                                     @endif
+
                                     <flux:tooltip content="Delete">
                                         <flux:button
                                             size="sm"

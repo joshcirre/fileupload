@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 
 /**
  * Laravel Cloud's object storage is Cloudflare R2 exposed over the S3-compatible API,
- * which is why the underlying client is still the AWS SDK's S3Client.
+ * which is why the underlying client is still the S3Client from the AWS SDK.
  */
 trait ResolvesR2Client
 {
@@ -39,7 +39,7 @@ trait ResolvesR2Client
         abort_unless(
             $disk instanceof AwsS3V3Adapter,
             503,
-            "The default disk '{$name}' is not an R2 bucket. Attach a Laravel Object Storage bucket in Laravel Cloud (or an S3-compatible disk locally) and redeploy."
+            sprintf("The default disk '%s' is not an R2 bucket. Attach a Laravel Object Storage bucket in Laravel Cloud (or an S3-compatible disk locally) and redeploy.", $name)
         );
 
         return $disk;
