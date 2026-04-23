@@ -71,7 +71,7 @@ final class CompleteMultipartUploadAction
         $share = Share::query()->create([
             'user_id' => $user?->id,
             'original_name' => $name,
-            'disk' => 's3',
+            'disk' => $this->diskName(),
             'path' => $key,
             'size' => $finalSize,
             'mime_type' => $mime,

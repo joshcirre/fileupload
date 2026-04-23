@@ -14,35 +14,31 @@ trait ResolvesS3Client
 {
     private function s3Client(): S3Client
     {
-        $this->ensureS3Configured();
-
-        $disk = Storage::disk('s3');
-
-        abort_unless(
-            $disk instanceof AwsS3V3Adapter,
-            503,
-            'The default S3 disk driver is not the AWS S3 v3 adapter.'
-        );
-
-        return $disk->getClient();
+        return $this->s3Disk()->getClient();
     }
 
     private function bucket(): string
     {
-        $this->ensureS3Configured();
-
-        return Config::string('filesystems.disks.s3.bucket');
+        return Config::string('filesystems.disks.'.$this->diskName().'.bucket');
     }
 
-    private function ensureS3Configured(): void
+    private function diskName(): string
     {
+        return Config::string('filesystems.default');
+    }
+
+    private function s3Disk(): AwsS3V3Adapter
+    {
+        $name = $this->diskName();
+        $disk = Storage::disk($name);
+
         abort_unless(
-            filled(config('filesystems.disks.s3.bucket'))
-            && filled(config('filesystems.disks.s3.key'))
-            && filled(config('filesystems.disks.s3.secret')),
+            $disk instanceof AwsS3V3Adapter,
             503,
-            'S3 is not configured. Set AWS_BUCKET, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY in your environment.'
+            "The default disk '{$name}' is not S3-compatible. Direct-to-S3 uploads require an S3 or R2 bucket — attach one in Laravel Cloud or set an s3 disk locally."
         );
+
+        return $disk;
     }
 
     private function safeName(string $name): string
