@@ -21,10 +21,10 @@ new #[Layout('layouts::app')] class extends Component {};
     })"
 >
     <div class="space-y-2 text-center">
-        <flux:badge color="violet" size="sm">Demo: direct-to-S3</flux:badge>
+        <flux:badge color="violet" size="sm">Demo: direct-to-R2</flux:badge>
         <flux:heading size="xl" class="!text-3xl sm:!text-4xl">Parts go straight to the bucket.</flux:heading>
         <flux:subheading class="text-base">
-            Laravel only signs URLs and records the share — the bytes never hit the container.
+            Laravel only signs URLs and records the share — the bytes never hit the container. R2 handles the rest.
         </flux:subheading>
     </div>
 
@@ -34,7 +34,7 @@ new #[Layout('layouts::app')] class extends Component {};
                 <flux:file-upload x-on:change="select($event)" x-bind:disabled="uploading">
                     <flux:file-upload.dropzone
                         heading="Drop a file here or click to browse"
-                        text="Each part is PUT straight to S3 via a pre-signed URL — 4 in flight."
+                        text="Each part is PUT straight to R2 via a pre-signed URL — 4 in flight."
                     />
                 </flux:file-upload>
 
@@ -152,11 +152,11 @@ new #[Layout('layouts::app')] class extends Component {};
         </div>
         <div class="flex items-start gap-2">
             <flux:icon.key class="mt-0.5 size-4 text-zinc-400" />
-            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Pre-signed.</span> Server signs each part URL; browser PUTs directly to S3.</div>
+            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Pre-signed.</span> Server signs each part URL; browser PUTs directly to R2.</div>
         </div>
         <div class="flex items-start gap-2">
             <flux:icon.squares-2x2 class="mt-0.5 size-4 text-zinc-400" />
-            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Native stitching.</span> S3's <code class="text-xs">CompleteMultipartUpload</code> assembles the object.</div>
+            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Native stitching.</span> R2's <code class="text-xs">CompleteMultipartUpload</code> assembles the object.</div>
         </div>
     </div>
 </div>
@@ -302,7 +302,7 @@ new #[Layout('layouts::app')] class extends Component {};
 
                                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                                 const etag = (res.headers.get('ETag') || '').replace(/"/g, '');
-                                if (!etag) throw new Error('Missing ETag from S3');
+                                if (!etag) throw new Error('Missing ETag from R2 (check CORS Expose headers).');
                                 etags[i] = etag;
                                 break;
                             } catch (e) {

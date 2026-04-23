@@ -28,7 +28,7 @@ test('abort validates input shape', function () {
     postJson('/direct/abort', [])->assertStatus(422);
 });
 
-test('initiate returns 503 when the default disk is not S3-compatible', function () {
+test('initiate returns 503 when the default disk is not an R2 bucket', function () {
     Config::set('filesystems.default', 'local');
 
     postJson('/direct/init', ['name' => 'test.bin'])->assertStatus(503);

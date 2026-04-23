@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions;
 
-use App\Actions\Concerns\ResolvesS3Client;
+use App\Actions\Concerns\ResolvesR2Client;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 
 final class InitiateMultipartUploadAction
 {
-    use ResolvesS3Client;
+    use ResolvesR2Client;
 
     public function handle(Request $request): JsonResponse
     {
@@ -27,7 +27,7 @@ final class InitiateMultipartUploadAction
         $uuid = Str::orderedUuid()->toString();
         $key = 'shares/'.$uuid.'-'.$this->safeName($name);
 
-        $result = $this->s3Client()->createMultipartUpload([
+        $result = $this->r2Client()->createMultipartUpload([
             'Bucket' => $this->bucket(),
             'Key' => $key,
             'ContentType' => $mime,

@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace App\Actions;
 
-use App\Actions\Concerns\ResolvesS3Client;
+use App\Actions\Concerns\ResolvesR2Client;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 final class SignMultipartPartAction
 {
-    use ResolvesS3Client;
+    use ResolvesR2Client;
 
     public function handle(Request $request): JsonResponse
     {
@@ -21,7 +21,7 @@ final class SignMultipartPartAction
             'partNumber' => ['required', 'integer', 'min:1', 'max:10000'],
         ])->validate();
 
-        $client = $this->s3Client();
+        $client = $this->r2Client();
 
         $command = $client->getCommand('UploadPart', [
             'Bucket' => $this->bucket(),

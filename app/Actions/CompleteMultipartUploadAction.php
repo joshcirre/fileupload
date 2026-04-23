@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions;
 
-use App\Actions\Concerns\ResolvesS3Client;
+use App\Actions\Concerns\ResolvesR2Client;
 use App\Models\Share;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Validator;
 
 final class CompleteMultipartUploadAction
 {
-    use ResolvesS3Client;
+    use ResolvesR2Client;
 
     public function handle(Request $request): JsonResponse
     {
@@ -48,7 +48,7 @@ final class CompleteMultipartUploadAction
             ->values()
             ->all();
 
-        $client = $this->s3Client();
+        $client = $this->r2Client();
         $bucket = $this->bucket();
 
         $client->completeMultipartUpload([
