@@ -14,7 +14,7 @@ test('new users can register', function () {
         ->set('password', 'password')
         ->set('password_confirmation', 'password')
         ->call('register')
-        ->assertRedirect(route('dashboard'));
+        ->assertRedirect(route('home'));
 
     expect(auth()->check())->toBeTrue();
     assertDatabaseHas('users', [

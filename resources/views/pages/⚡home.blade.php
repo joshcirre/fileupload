@@ -1,0 +1,353 @@
+<?php
+
+use App\Actions\FinalizeUploadAction;
+use Livewire\Attributes\Layout;
+use Livewire\Component;
+
+new #[Layout('layouts::app')] class extends Component {};
+
+?>
+
+<div
+    class="mx-auto max-w-2xl space-y-8"
+    x-data="chunkUploader({
+        chunkEndpoint: @js(route('upload.chunk')),
+        finalizeEndpoint: @js(route('upload.finalize')),
+        csrfToken: @js(csrf_token()),
+        guestMaxBytes: @js(FinalizeUploadAction::GUEST_MAX_BYTES),
+        isGuest: @js(! auth()->check()),
+        loginUrl: @js(route('login')),
+        registerUrl: @js(route('register')),
+    })"
+>
+    <div class="space-y-2 text-center">
+        <flux:heading size="xl" class="!text-3xl sm:!text-4xl">Send big files. Skip the 413.</flux:heading>
+        <flux:subheading class="text-base">
+            Drop a file. Pick how long the link lives. Share.
+        </flux:subheading>
+    </div>
+
+    <flux:card class="space-y-5">
+        <template x-if="!result">
+            <div class="space-y-5">
+                <flux:file-upload x-on:change="select($event)" x-bind:disabled="uploading">
+                    <flux:file-upload.dropzone
+                        heading="Drop a file here or click to browse"
+                        x-bind:text="dropzoneText"
+                    />
+                </flux:file-upload>
+
+                <template x-if="file">
+                    <flux:file-item
+                        x-bind:heading="file.name"
+                        x-bind:size="file.size"
+                        icon="document"
+                        x-bind:invalid="gated"
+                    >
+                        <x-slot name="actions">
+                            <flux:file-item.remove x-on:click="clearFile" x-show="!uploading" x-cloak />
+                        </x-slot>
+                    </flux:file-item>
+                </template>
+
+                <template x-if="gated">
+                    <flux:callout variant="warning" icon="lock-closed" x-cloak>
+                        <flux:callout.heading>This file is over 20 MB</flux:callout.heading>
+                        <flux:callout.text>
+                            Guests can send files up to 20 MB. Create a free account to send anything larger.
+                        </flux:callout.text>
+                        <x-slot name="actions">
+                            <flux:button variant="primary" x-bind:href="registerUrl">Sign up</flux:button>
+                            <flux:button variant="ghost" x-bind:href="loginUrl">Login</flux:button>
+                        </x-slot>
+                    </flux:callout>
+                </template>
+
+                <template x-if="file && uploading">
+                    <div class="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-900">
+                        <div class="flex items-center justify-between text-xs tabular-nums text-zinc-500">
+                            <span>Chunk <span class="font-medium text-zinc-700 dark:text-zinc-300" x-text="currentChunk"></span> / <span x-text="totalChunks"></span></span>
+                            <span x-text="`${percent}%`"></span>
+                        </div>
+                        <div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                            <div class="h-full bg-accent transition-[width] duration-150 ease-out" x-bind:style="`width: ${percent}%`"></div>
+                        </div>
+                        <div class="flex items-center justify-between text-xs tabular-nums text-zinc-500">
+                            <span x-text="`${formatBytes(bytesSent)} of ${formatBytes(file.size)}`"></span>
+                            <span x-text="`${speedLabel} · ${etaLabel}`"></span>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="file && !gated">
+                    <div class="space-y-5">
+                        <flux:separator />
+
+                        <flux:fieldset>
+                            <flux:legend>Link expiration</flux:legend>
+                            <flux:radio.group x-model="expiration" variant="segmented">
+                                <flux:radio value="1" label="1 day" />
+                                <flux:radio value="7" label="7 days" />
+                                <flux:radio value="30" label="30 days" />
+                                <flux:radio value="once" label="One-time download" />
+                            </flux:radio.group>
+                        </flux:fieldset>
+                    </div>
+                </template>
+
+                <template x-if="error">
+                    <flux:callout variant="danger" icon="exclamation-triangle" x-cloak>
+                        <flux:callout.heading>Upload failed</flux:callout.heading>
+                        <flux:callout.text x-text="error"></flux:callout.text>
+                    </flux:callout>
+                </template>
+
+                <div class="flex items-center justify-end gap-2" x-show="file && !gated" x-cloak>
+                    <flux:button variant="danger" icon="stop" x-on:click="cancel" x-show="uploading" x-cloak>
+                        Cancel
+                    </flux:button>
+                    <flux:button variant="primary" icon="paper-airplane" x-on:click="start" x-bind:disabled="uploading">
+                        Create share link
+                    </flux:button>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="result">
+            <div class="space-y-5" x-cloak>
+                <flux:callout variant="success" icon="check-circle">
+                    <flux:callout.heading>Ready to share</flux:callout.heading>
+                    <flux:callout.text>
+                        <span x-text="result.name"></span>
+                        <template x-if="result.expires_at">
+                            <span> · expires <span x-text="formatExpiry(result.expires_at)"></span></span>
+                        </template>
+                        <template x-if="result.delete_after_first_download">
+                            <span> · one-time download</span>
+                        </template>
+                    </flux:callout.text>
+                </flux:callout>
+
+                <flux:field>
+                    <flux:label>Share link</flux:label>
+                    <flux:input x-bind:value="result.url" readonly copyable />
+                </flux:field>
+
+                <div class="flex justify-end gap-2">
+                    <flux:button variant="ghost" icon="arrow-path" x-on:click="reset">Send another</flux:button>
+                    @auth
+                        <flux:button variant="primary" icon="list-bullet" href="{{ route('shares.index') }}" wire:navigate>
+                            My shares
+                        </flux:button>
+                    @endauth
+                </div>
+            </div>
+        </template>
+    </flux:card>
+
+    <div class="grid gap-3 text-sm text-zinc-500 sm:grid-cols-3">
+        <div class="flex items-start gap-2">
+            <flux:icon.scissors class="mt-0.5 size-4 text-zinc-400" />
+            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Sliced in-browser.</span> 5 MB chunks so nothing trips a 413.</div>
+        </div>
+        <div class="flex items-start gap-2">
+            <flux:icon.clock class="mt-0.5 size-4 text-zinc-400" />
+            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Auto-expires.</span> Links vanish on the schedule you set.</div>
+        </div>
+        <div class="flex items-start gap-2">
+            <flux:icon.lock-closed class="mt-0.5 size-4 text-zinc-400" />
+            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">One-time mode.</span> Gone the instant someone downloads.</div>
+        </div>
+    </div>
+</div>
+
+@script
+<script>
+    const CHUNK_SIZE = 5 * 1024 * 1024;
+
+    Alpine.data('chunkUploader', ({ chunkEndpoint, finalizeEndpoint, csrfToken, guestMaxBytes, isGuest, loginUrl, registerUrl }) => ({
+        file: null,
+        uploading: false,
+        error: null,
+        result: null,
+        expiration: '7',
+        totalChunks: 0,
+        currentChunk: 0,
+        bytesSent: 0,
+        speed: 0,
+        lastTickAt: 0,
+        lastTickBytes: 0,
+        abortController: null,
+        uuid: null,
+        loginUrl,
+        registerUrl,
+
+        get gated() {
+            return isGuest && this.file && this.file.size > guestMaxBytes;
+        },
+        get dropzoneText() {
+            return isGuest
+                ? 'Any file up to 20 MB — sign up for more.'
+                : 'Any file, any size.';
+        },
+        get percent() {
+            if (!this.file || this.file.size === 0) return 0;
+            return Math.min(100, Math.round((this.bytesSent / this.file.size) * 100));
+        },
+        get speedLabel() {
+            return this.speed > 0 ? `${this.formatBytes(this.speed)}/s` : '—';
+        },
+        get etaLabel() {
+            if (!this.uploading || this.speed <= 0) return '—';
+            const remaining = Math.max(0, this.file.size - this.bytesSent);
+            return this.formatDuration(remaining / this.speed);
+        },
+
+        select(event) {
+            const f = event.target?.files?.[0];
+            if (!f) return;
+            this.file = f;
+            this.totalChunks = Math.max(1, Math.ceil(f.size / CHUNK_SIZE));
+            this.error = null;
+        },
+
+        clearFile() {
+            if (this.uploading) return;
+            this.file = null;
+            this.totalChunks = 0;
+            this.error = null;
+            const input = this.$el.querySelector('input[type=file]');
+            if (input) input.value = '';
+        },
+
+        reset() {
+            this.abortController?.abort();
+            this.abortController = null;
+            this.file = null;
+            this.uploading = false;
+            this.error = null;
+            this.result = null;
+            this.totalChunks = 0;
+            this.currentChunk = 0;
+            this.bytesSent = 0;
+            this.speed = 0;
+            this.uuid = null;
+            const input = this.$el.querySelector('input[type=file]');
+            if (input) input.value = '';
+        },
+
+        cancel() {
+            this.abortController?.abort();
+            this.uploading = false;
+            this.error = 'Upload cancelled.';
+        },
+
+        async start() {
+            if (!this.file || this.uploading || this.gated) return;
+
+            this.uploading = true;
+            this.error = null;
+            this.bytesSent = 0;
+            this.currentChunk = 0;
+            this.uuid = crypto.randomUUID();
+            this.abortController = new AbortController();
+            this.lastTickAt = performance.now();
+            this.lastTickBytes = 0;
+
+            try {
+                for (let i = 0; i < this.totalChunks; i++) {
+                    const start = i * CHUNK_SIZE;
+                    const end = Math.min(this.file.size, start + CHUNK_SIZE);
+                    const blob = this.file.slice(start, end);
+
+                    const form = new FormData();
+                    form.append('uuid', this.uuid);
+                    form.append('index', String(i));
+                    form.append('total', String(this.totalChunks));
+                    form.append('name', this.file.name);
+                    form.append('chunk', blob, 'chunk');
+
+                    const res = await fetch(chunkEndpoint, {
+                        method: 'POST',
+                        body: form,
+                        credentials: 'same-origin',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                        signal: this.abortController.signal,
+                    });
+
+                    if (!res.ok) throw new Error(`Chunk ${i + 1} failed (HTTP ${res.status}).`);
+
+                    this.currentChunk = i + 1;
+                    this.bytesSent += blob.size;
+                    this.updateSpeed();
+                }
+
+                const finalizeBody = new FormData();
+                finalizeBody.append('uuid', this.uuid);
+                finalizeBody.append('total', String(this.totalChunks));
+                finalizeBody.append('name', this.file.name);
+                if (this.file.type) finalizeBody.append('mime', this.file.type);
+
+                if (this.expiration === 'once') {
+                    finalizeBody.append('delete_after_first_download', '1');
+                } else {
+                    finalizeBody.append('expires_in_days', this.expiration);
+                }
+
+                const finalRes = await fetch(finalizeEndpoint, {
+                    method: 'POST',
+                    body: finalizeBody,
+                    credentials: 'same-origin',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                    signal: this.abortController.signal,
+                });
+
+                if (!finalRes.ok) {
+                    const body = await finalRes.json().catch(() => null);
+                    throw new Error(body?.message || `Finalize failed (HTTP ${finalRes.status}).`);
+                }
+
+                this.result = await finalRes.json();
+            } catch (e) {
+                if (e.name !== 'AbortError') this.error = e.message || String(e);
+            } finally {
+                this.uploading = false;
+                this.abortController = null;
+            }
+        },
+
+        updateSpeed() {
+            const now = performance.now();
+            const dt = (now - this.lastTickAt) / 1000;
+            if (dt >= 0.25) {
+                this.speed = (this.bytesSent - this.lastTickBytes) / dt;
+                this.lastTickAt = now;
+                this.lastTickBytes = this.bytesSent;
+            }
+        },
+
+        formatBytes(bytes) {
+            if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+            return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+        },
+
+        formatDuration(seconds) {
+            if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+            if (seconds < 60) return `${Math.ceil(seconds)}s`;
+            const m = Math.floor(seconds / 60);
+            const s = Math.ceil(seconds % 60);
+            return `${m}m ${s}s`;
+        },
+
+        formatExpiry(iso) {
+            try {
+                return new Date(iso).toLocaleString();
+            } catch {
+                return iso;
+            }
+        },
+    }));
+</script>
+@endscript

@@ -12,7 +12,7 @@ test('users can authenticate using the login form', function () {
         ->set('form.email', $user->email)
         ->set('form.password', 'password')
         ->call('login')
-        ->assertRedirect(route('dashboard'));
+        ->assertRedirect(route('home'));
 
     expect(auth()->check())->toBeTrue();
 });
@@ -53,7 +53,7 @@ test('remember me functionality works', function () {
         ->set('form.password', 'password')
         ->set('form.remember', true)
         ->call('login')
-        ->assertRedirect(route('dashboard'));
+        ->assertRedirect(route('home'));
 
     expect(auth()->check())->toBeTrue();
     // Note: viaRemember() only works after a subsequent request with the cookie
