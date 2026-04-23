@@ -10,18 +10,21 @@ new #[Layout('layouts::app')] class extends Component {};
 
 <div
     class="mx-auto max-w-2xl space-y-8"
-    x-data="chunkUploader({
-        chunkEndpoint: @js(route('upload.chunk')),
-        finalizeEndpoint: @js(route('upload.finalize')),
+    x-data="directUploader({
+        initEndpoint: @js(route('direct.init')),
+        signEndpoint: @js(route('direct.sign')),
+        completeEndpoint: @js(route('direct.complete')),
+        abortEndpoint: @js(route('direct.abort')),
         csrfToken: @js(csrf_token()),
         guestMaxBytes: @js(FinalizeUploadAction::GUEST_MAX_BYTES),
         isGuest: @js(! auth()->check()),
     })"
 >
     <div class="space-y-2 text-center">
-        <flux:heading size="xl" class="!text-3xl sm:!text-4xl">Send big files. Skip the 413.</flux:heading>
+        <flux:badge color="violet" size="sm">Demo: direct-to-S3</flux:badge>
+        <flux:heading size="xl" class="!text-3xl sm:!text-4xl">Parts go straight to the bucket.</flux:heading>
         <flux:subheading class="text-base">
-            Drop a file. Pick how long the link lives. Share.
+            Laravel only signs URLs and records the share — the bytes never hit the container.
         </flux:subheading>
     </div>
 
@@ -31,7 +34,7 @@ new #[Layout('layouts::app')] class extends Component {};
                 <flux:file-upload x-on:change="select($event)" x-bind:disabled="uploading">
                     <flux:file-upload.dropzone
                         heading="Drop a file here or click to browse"
-                        x-bind:text="dropzoneText"
+                        text="Each part is PUT straight to S3 via a pre-signed URL — 4 in flight."
                     />
                 </flux:file-upload>
 
@@ -42,20 +45,12 @@ new #[Layout('layouts::app')] class extends Component {};
                             ? 'border-red-500'
                             : 'border-zinc-200 border-b-zinc-300/80 dark:border-white/10'"
                     >
-                        <flux:icon.document class="mt-0.5 size-5 shrink-0 text-zinc-400" />
+                        <flux:icon.cloud-arrow-up class="mt-0.5 size-5 shrink-0 text-zinc-400" />
                         <div class="min-w-0 flex-1">
                             <div class="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200" x-text="file.name"></div>
                             <div class="text-xs text-zinc-500" x-text="formatBytes(file.size)"></div>
                         </div>
-                        <flux:button
-                            size="sm"
-                            variant="ghost"
-                            icon="x-mark"
-                            x-on:click="clearFile"
-                            x-show="!uploading"
-                            x-cloak
-                            aria-label="Remove file"
-                        />
+                        <flux:button size="sm" variant="ghost" icon="x-mark" x-on:click="clearFile" x-show="!uploading" x-cloak aria-label="Remove file" />
                     </div>
                 </template>
 
@@ -75,7 +70,7 @@ new #[Layout('layouts::app')] class extends Component {};
                 <template x-if="file && uploading">
                     <div class="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-900">
                         <div class="flex items-center justify-between text-xs tabular-nums text-zinc-500">
-                            <span>Chunk <span class="font-medium text-zinc-700 dark:text-zinc-300" x-text="currentChunk"></span> / <span x-text="totalChunks"></span></span>
+                            <span>Part <span class="font-medium text-zinc-700 dark:text-zinc-300" x-text="completedParts"></span> / <span x-text="totalParts"></span></span>
                             <span x-text="`${percent}%`"></span>
                         </div>
                         <div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
@@ -89,19 +84,15 @@ new #[Layout('layouts::app')] class extends Component {};
                 </template>
 
                 <template x-if="file && !gated">
-                    <div class="space-y-5">
-                        <flux:separator />
-
-                        <flux:fieldset>
-                            <flux:legend>Link expiration</flux:legend>
-                            <flux:radio.group x-model="expiration" variant="segmented">
-                                <flux:radio value="1" label="1 day" />
-                                <flux:radio value="7" label="7 days" />
-                                <flux:radio value="30" label="30 days" />
-                                <flux:radio value="once" label="One-time download" />
-                            </flux:radio.group>
-                        </flux:fieldset>
-                    </div>
+                    <flux:fieldset>
+                        <flux:legend>Link expiration</flux:legend>
+                        <flux:radio.group x-model="expiration" variant="segmented">
+                            <flux:radio value="1" label="1 day" />
+                            <flux:radio value="7" label="7 days" />
+                            <flux:radio value="30" label="30 days" />
+                            <flux:radio value="once" label="One-time download" />
+                        </flux:radio.group>
+                    </flux:fieldset>
                 </template>
 
                 <template x-if="error">
@@ -156,46 +147,43 @@ new #[Layout('layouts::app')] class extends Component {};
 
     <div class="grid gap-3 text-sm text-zinc-500 sm:grid-cols-3">
         <div class="flex items-start gap-2">
-            <flux:icon.scissors class="mt-0.5 size-4 text-zinc-400" />
-            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Sliced in-browser.</span> 5 MB chunks, 4 in flight at a time.</div>
+            <flux:icon.bolt class="mt-0.5 size-4 text-zinc-400" />
+            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Zero proxy.</span> Bytes bypass Laravel — no 413 risk, no bandwidth double-pay.</div>
         </div>
         <div class="flex items-start gap-2">
-            <flux:icon.clock class="mt-0.5 size-4 text-zinc-400" />
-            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Auto-expires.</span> Links vanish on the schedule you set.</div>
+            <flux:icon.key class="mt-0.5 size-4 text-zinc-400" />
+            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Pre-signed.</span> Server signs each part URL; browser PUTs directly to S3.</div>
         </div>
         <div class="flex items-start gap-2">
-            <flux:icon.lock-closed class="mt-0.5 size-4 text-zinc-400" />
-            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">One-time mode.</span> Gone the instant someone downloads.</div>
+            <flux:icon.squares-2x2 class="mt-0.5 size-4 text-zinc-400" />
+            <div><span class="font-medium text-zinc-700 dark:text-zinc-300">Native stitching.</span> S3's <code class="text-xs">CompleteMultipartUpload</code> assembles the object.</div>
         </div>
     </div>
 </div>
 
 @script
 <script>
-    const CHUNK_SIZE = 5 * 1024 * 1024;
+    const PART_SIZE = 5 * 1024 * 1024;
 
-    Alpine.data('chunkUploader', ({ chunkEndpoint, finalizeEndpoint, csrfToken, guestMaxBytes, isGuest }) => ({
+    Alpine.data('directUploader', ({ initEndpoint, signEndpoint, completeEndpoint, abortEndpoint, csrfToken, guestMaxBytes, isGuest }) => ({
         file: null,
         uploading: false,
         error: null,
         result: null,
         expiration: '7',
-        totalChunks: 0,
-        currentChunk: 0,
+        totalParts: 0,
+        completedParts: 0,
         bytesSent: 0,
         speed: 0,
         lastTickAt: 0,
         lastTickBytes: 0,
         abortController: null,
+        uploadId: null,
+        key: null,
         uuid: null,
 
         get gated() {
             return isGuest && this.file && this.file.size > guestMaxBytes;
-        },
-        get dropzoneText() {
-            return isGuest
-                ? 'Any file up to 20 MB — sign up for more.'
-                : 'Any file, any size.';
         },
         get percent() {
             if (!this.file || this.file.size === 0) return 0;
@@ -214,14 +202,14 @@ new #[Layout('layouts::app')] class extends Component {};
             const f = event.target?.files?.[0];
             if (!f) return;
             this.file = f;
-            this.totalChunks = Math.max(1, Math.ceil(f.size / CHUNK_SIZE));
+            this.totalParts = Math.max(1, Math.ceil(f.size / PART_SIZE));
             this.error = null;
         },
 
         clearFile() {
             if (this.uploading) return;
             this.file = null;
-            this.totalChunks = 0;
+            this.totalParts = 0;
             this.error = null;
             const input = this.$el.querySelector('input[type=file]');
             if (input) input.value = '';
@@ -234,17 +222,31 @@ new #[Layout('layouts::app')] class extends Component {};
             this.uploading = false;
             this.error = null;
             this.result = null;
-            this.totalChunks = 0;
-            this.currentChunk = 0;
+            this.totalParts = 0;
+            this.completedParts = 0;
             this.bytesSent = 0;
             this.speed = 0;
+            this.uploadId = null;
+            this.key = null;
             this.uuid = null;
             const input = this.$el.querySelector('input[type=file]');
             if (input) input.value = '';
         },
 
-        cancel() {
+        async cancel() {
             this.abortController?.abort();
+            if (this.uploadId && this.key) {
+                try {
+                    await fetch(abortEndpoint, {
+                        method: 'POST',
+                        body: JSON.stringify({ uploadId: this.uploadId, key: this.key }),
+                        credentials: 'same-origin',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/json', Accept: 'application/json' },
+                    });
+                } catch {
+                    // best-effort cleanup
+                }
+            }
             this.uploading = false;
             this.error = 'Upload cancelled.';
         },
@@ -255,97 +257,124 @@ new #[Layout('layouts::app')] class extends Component {};
             this.uploading = true;
             this.error = null;
             this.bytesSent = 0;
-            this.currentChunk = 0;
-            this.uuid = crypto.randomUUID();
+            this.completedParts = 0;
             this.abortController = new AbortController();
             this.lastTickAt = performance.now();
             this.lastTickBytes = 0;
 
-            const concurrency = Math.min(4, this.totalChunks);
-            let nextIndex = 0;
-            let failure = null;
-
-            const uploadOne = async () => {
-                while (failure === null && !this.abortController.signal.aborted) {
-                    const i = nextIndex++;
-                    if (i >= this.totalChunks) return;
-
-                    const start = i * CHUNK_SIZE;
-                    const end = Math.min(this.file.size, start + CHUNK_SIZE);
-                    const blob = this.file.slice(start, end);
-
-                    for (let attempt = 1; attempt <= 3; attempt++) {
-                        try {
-                            const form = new FormData();
-                            form.append('uuid', this.uuid);
-                            form.append('index', String(i));
-                            form.append('total', String(this.totalChunks));
-                            form.append('name', this.file.name);
-                            form.append('chunk', blob, 'chunk');
-
-                            const res = await fetch(chunkEndpoint, {
-                                method: 'POST',
-                                body: form,
-                                credentials: 'same-origin',
-                                headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
-                                signal: this.abortController.signal,
-                            });
-
-                            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                            break;
-                        } catch (e) {
-                            if (e.name === 'AbortError') return;
-                            if (attempt === 3) {
-                                failure = new Error(`Chunk ${i + 1} failed after 3 attempts: ${e.message}`);
-                                this.abortController.abort();
-                                return;
-                            }
-                            await new Promise(r => setTimeout(r, 300 * attempt));
-                        }
-                    }
-
-                    this.currentChunk += 1;
-                    this.bytesSent += blob.size;
-                    this.updateSpeed();
-                }
-            };
-
             try {
+                const init = await this.postJson(initEndpoint, {
+                    name: this.file.name,
+                    mime: this.file.type || undefined,
+                });
+
+                this.uploadId = init.uploadId;
+                this.key = init.key;
+                this.uuid = init.uuid;
+
+                const etags = new Array(this.totalParts);
+                let nextIndex = 0;
+                let failure = null;
+
+                const uploadOne = async () => {
+                    while (failure === null && !this.abortController.signal.aborted) {
+                        const i = nextIndex++;
+                        if (i >= this.totalParts) return;
+
+                        const partNumber = i + 1;
+                        const start = i * PART_SIZE;
+                        const end = Math.min(this.file.size, start + PART_SIZE);
+                        const blob = this.file.slice(start, end);
+
+                        for (let attempt = 1; attempt <= 3; attempt++) {
+                            try {
+                                const signed = await this.postJson(signEndpoint, {
+                                    uploadId: this.uploadId,
+                                    key: this.key,
+                                    partNumber,
+                                });
+
+                                const res = await fetch(signed.url, {
+                                    method: 'PUT',
+                                    body: blob,
+                                    signal: this.abortController.signal,
+                                });
+
+                                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                const etag = (res.headers.get('ETag') || '').replace(/"/g, '');
+                                if (!etag) throw new Error('Missing ETag from S3');
+                                etags[i] = etag;
+                                break;
+                            } catch (e) {
+                                if (e.name === 'AbortError') return;
+                                if (attempt === 3) {
+                                    failure = new Error(`Part ${partNumber} failed after 3 attempts: ${e.message}`);
+                                    this.abortController.abort();
+                                    return;
+                                }
+                                await new Promise(r => setTimeout(r, 400 * attempt));
+                            }
+                        }
+
+                        this.completedParts += 1;
+                        this.bytesSent += blob.size;
+                        this.updateSpeed();
+                    }
+                };
+
+                const concurrency = Math.min(4, this.totalParts);
                 await Promise.all(Array.from({ length: concurrency }, uploadOne));
                 if (failure) throw failure;
 
-                const finalizeBody = new FormData();
-                finalizeBody.append('uuid', this.uuid);
-                finalizeBody.append('total', String(this.totalChunks));
-                finalizeBody.append('name', this.file.name);
-                if (this.file.type) finalizeBody.append('mime', this.file.type);
+                const parts = etags.map((etag, i) => ({ partNumber: i + 1, etag }));
 
-                if (this.expiration === 'once') {
-                    finalizeBody.append('delete_after_first_download', '1');
-                } else {
-                    finalizeBody.append('expires_in_days', this.expiration);
-                }
-
-                const finalRes = await fetch(finalizeEndpoint, {
-                    method: 'POST',
-                    body: finalizeBody,
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
-                    signal: this.abortController.signal,
+                const complete = await this.postJson(completeEndpoint, {
+                    uploadId: this.uploadId,
+                    key: this.key,
+                    uuid: this.uuid,
+                    name: this.file.name,
+                    mime: this.file.type || undefined,
+                    parts,
+                    ...(this.expiration === 'once'
+                        ? { delete_after_first_download: true }
+                        : { expires_in_days: Number(this.expiration) }),
                 });
 
-                if (!finalRes.ok) {
-                    const body = await finalRes.json().catch(() => null);
-                    throw new Error(body?.message || `Finalize failed (HTTP ${finalRes.status}).`);
-                }
-
-                this.result = await finalRes.json();
+                this.result = complete;
             } catch (e) {
-                if (e.name !== 'AbortError') this.error = e.message || String(e);
+                if (e.name !== 'AbortError') {
+                    this.error = e.message || String(e);
+                    // best-effort abort on the server
+                    if (this.uploadId && this.key) {
+                        fetch(abortEndpoint, {
+                            method: 'POST',
+                            body: JSON.stringify({ uploadId: this.uploadId, key: this.key }),
+                            credentials: 'same-origin',
+                            headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/json', Accept: 'application/json' },
+                        }).catch(() => {});
+                    }
+                }
             } finally {
                 this.uploading = false;
                 this.abortController = null;
             }
+        },
+
+        async postJson(url, body) {
+            const res = await fetch(url, {
+                method: 'POST',
+                body: JSON.stringify(body),
+                credentials: 'same-origin',
+                headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/json', Accept: 'application/json' },
+                signal: this.abortController.signal,
+            });
+
+            if (!res.ok) {
+                const payload = await res.json().catch(() => null);
+                throw new Error(payload?.message || `Request failed (HTTP ${res.status}).`);
+            }
+
+            return res.json();
         },
 
         updateSpeed() {

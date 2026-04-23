@@ -29,6 +29,7 @@ new class extends Component
         @auth
             <flux:navbar class="max-lg:hidden">
                 <flux:navbar.item icon="arrow-up-tray" href="{{ route('home') }}" wire:navigate>Upload</flux:navbar.item>
+                <flux:navbar.item icon="bolt" href="{{ route('direct') }}" wire:navigate>Direct-to-S3</flux:navbar.item>
                 <flux:separator vertical variant="subtle" class="my-2" />
                 <flux:navbar.item icon="link" href="{{ route('shares.index') }}" wire:navigate>My shares</flux:navbar.item>
             </flux:navbar>
@@ -60,6 +61,7 @@ new class extends Component
             </flux:sidebar.header>
             <flux:sidebar.nav>
                 <flux:sidebar.item icon="arrow-up-tray" href="{{ route('home') }}" wire:navigate>Upload</flux:sidebar.item>
+                <flux:sidebar.item icon="bolt" href="{{ route('direct') }}" wire:navigate>Direct-to-S3</flux:sidebar.item>
                 <flux:sidebar.item icon="link" href="{{ route('shares.index') }}" wire:navigate>My shares</flux:sidebar.item>
             </flux:sidebar.nav>
         </flux:sidebar>
