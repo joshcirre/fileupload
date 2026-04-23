@@ -16,8 +16,6 @@ new #[Layout('layouts::app')] class extends Component {};
         csrfToken: @js(csrf_token()),
         guestMaxBytes: @js(FinalizeUploadAction::GUEST_MAX_BYTES),
         isGuest: @js(! auth()->check()),
-        loginUrl: @js(route('login')),
-        registerUrl: @js(route('register')),
     })"
 >
     <div class="space-y-2 text-center">
@@ -38,16 +36,27 @@ new #[Layout('layouts::app')] class extends Component {};
                 </flux:file-upload>
 
                 <template x-if="file">
-                    <flux:file-item
-                        x-bind:heading="file.name"
-                        x-bind:size="file.size"
-                        icon="document"
-                        x-bind:invalid="gated"
+                    <div
+                        class="flex items-start gap-3 overflow-hidden rounded-lg border bg-white p-3 shadow-xs dark:bg-white/10"
+                        x-bind:class="gated
+                            ? 'border-red-500'
+                            : 'border-zinc-200 border-b-zinc-300/80 dark:border-white/10'"
                     >
-                        <x-slot name="actions">
-                            <flux:file-item.remove x-on:click="clearFile" x-show="!uploading" x-cloak />
-                        </x-slot>
-                    </flux:file-item>
+                        <flux:icon.document class="mt-0.5 size-5 shrink-0 text-zinc-400" />
+                        <div class="min-w-0 flex-1">
+                            <div class="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200" x-text="file.name"></div>
+                            <div class="text-xs text-zinc-500" x-text="formatBytes(file.size)"></div>
+                        </div>
+                        <flux:button
+                            size="sm"
+                            variant="ghost"
+                            icon="x-mark"
+                            x-on:click="clearFile"
+                            x-show="!uploading"
+                            x-cloak
+                            aria-label="Remove file"
+                        />
+                    </div>
                 </template>
 
                 <template x-if="gated">
@@ -57,8 +66,8 @@ new #[Layout('layouts::app')] class extends Component {};
                             Guests can send files up to 20 MB. Create a free account to send anything larger.
                         </flux:callout.text>
                         <x-slot name="actions">
-                            <flux:button variant="primary" x-bind:href="registerUrl">Sign up</flux:button>
-                            <flux:button variant="ghost" x-bind:href="loginUrl">Login</flux:button>
+                            <flux:button variant="primary" href="{{ route('register') }}" wire:navigate>Sign up</flux:button>
+                            <flux:button variant="ghost" href="{{ route('login') }}" wire:navigate>Login</flux:button>
                         </x-slot>
                     </flux:callout>
                 </template>
@@ -165,7 +174,7 @@ new #[Layout('layouts::app')] class extends Component {};
 <script>
     const CHUNK_SIZE = 5 * 1024 * 1024;
 
-    Alpine.data('chunkUploader', ({ chunkEndpoint, finalizeEndpoint, csrfToken, guestMaxBytes, isGuest, loginUrl, registerUrl }) => ({
+    Alpine.data('chunkUploader', ({ chunkEndpoint, finalizeEndpoint, csrfToken, guestMaxBytes, isGuest }) => ({
         file: null,
         uploading: false,
         error: null,
@@ -179,8 +188,6 @@ new #[Layout('layouts::app')] class extends Component {};
         lastTickBytes: 0,
         abortController: null,
         uuid: null,
-        loginUrl,
-        registerUrl,
 
         get gated() {
             return isGuest && this.file && this.file.size > guestMaxBytes;
