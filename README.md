@@ -1,147 +1,138 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/7f3c77b9-e549-4887-872e-a0d512678945">
-    <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/8cf172b8-0e36-47c4-b096-a6fad0044e32">
-    <img alt="Fission Logo" src="https://github.com/user-attachments/assets/fd074588-4ffd-47f3-af6e-a24500ecbc55">
-  </picture>
-</p>
+# Upchunk
 
-> [!IMPORTANT]
-> This is an opinionated starter kit created by me (Josh Cirre) using Laravel Livewire and Livewire Flux. While PRs are welcome, this is designed to fit the needs of one person.
+A WeTransfer-style file share built on Laravel 12 + Livewire 4 + Flux Pro. **Two upload paths, same UX** — so you can see the difference between "chunks through your app" and "direct-to-R2" side by side.
 
-> [!TIP]
-> Clone the repository and run `composer setup` to get started quickly. See [Installation](#installation) below.
+> **The problem it solves.** Every host puts a cap on request body size (Laravel Cloud's is around 100 MB). A 120 MB upload through the usual `<input type="file">` returns a 413. Upchunk shows two ways around it.
 
-## TweakFlux — Deep Theming for Flux UI
+## How it works
 
-Fission pairs well with [**TweakFlux**](https://github.com/joshcirre/tweakflux), a theming package that lets you transform every Flux component with a single command. Override Tailwind v4 CSS custom properties to apply 20+ preset themes or generate your own — zero vendor files touched.
+### Path 1 — Chunking through Laravel (`/`)
 
-```bash
-composer global require joshcirre/tweakflux
-tweakflux apply bubblegum
+Slice the file in the browser into 5 MB chunks and POST them one at a time (4 in flight). Each request is tiny, so nothing trips the proxy. When all chunks are up, one finalize call reassembles them server-side.
+
+```
+browser ──(5 MB chunks × N, 4 in flight)──▶ Laravel ──▶ default disk
+                                                │
+                                                ▼
+browser ◀────────── share URL ──────── Laravel ─── finalize: stream
+                                                    chunks → stitch →
+                                                    create Share row
 ```
 
-<p align="center">
-  <img src="art/tweakflux-preview.jpeg" alt="TweakFlux Bubblegum theme preview" width="700">
-</p>
+**Bytes route:** `browser → Laravel → storage`. On Cloud you pay bandwidth twice during finalize (read chunks back, write final). Works on any filesystem — `local` in dev, R2 on Cloud.
 
-## Why Does This Exist?
+### Path 2 — Direct-to-R2 multipart (`/direct`)
 
-Up until Livewire Flux released, I used Breeze as a starting point for 99% of new projects that I would create. Typically, those new projects were built for demos on videos or starting points for tutorials. In addition, I would start side projects or app ideas with Breeze, as well.
+Laravel signs URLs; R2 does the rest. The browser uploads each part directly to the bucket via pre-signed PUT URLs. Laravel only sees small JSON round-trips.
 
-Eventually I knew I wanted to create my own starting kit that worked well for what I needed in most scenarios. Authentication and a dashboard where I can start writing code.
+```
+browser ──▶ Laravel: "initiate"           ─── R2 ─▶ uploadId
+browser ──▶ Laravel: "sign part N"        ─── R2 ─▶ signed PUT URL
+browser ──(part N, direct)────────────────────▶ R2   (captures ETag)
+   ... 4 parts in flight ...
+browser ──▶ Laravel: "complete" + ETags   ─── R2 ─▶ stitched object
+browser ◀── share URL ──────── Laravel ─── HEAD for size → Share row
+```
 
-Once Livewire Flux released, it was the perfect time to make this happen.
+**Bytes route:** `browser → R2`. The file never hits the Laravel container.
 
-## Flux
+### Same everything else
 
-Fission uses [Livewire Flux](https://fluxui.dev) (free) for its UI components. No Flux Pro license is required out of the box.
+Both paths create the same `Share` row, use the same download proxy (`GET /s/{uuid}/download` enforces expiration + one-time rules), and share the same UI patterns. Only the *upload* differs.
 
-If you want access to premium components (date pickers, calendars, charts, tabs, and more), you can install Flux Pro during setup when prompted for optional packages. Fission does not include any of Flux's CSS or built assets — you must have the package installed to use it.
+## File map
 
-## Installation
+If you're reading or demoing the code, here's what to open.
 
-### Quick Start (Recommended)
+**Path 1 — chunking**
+| File | Role |
+|---|---|
+| `resources/views/pages/⚡home.blade.php` | Alpine `chunkUploader` — slice + worker pool |
+| `app/Actions/StoreUploadChunkAction.php` | Receive one chunk → `storeAs` |
+| `app/Actions/FinalizeUploadAction.php` | Stream chunks → stitch → create `Share` |
+
+**Path 2 — direct-to-R2**
+| File | Role |
+|---|---|
+| `resources/views/pages/⚡direct.blade.php` | Alpine `directUploader` — init → sign → PUT → complete |
+| `app/Actions/InitiateMultipartUploadAction.php` | `CreateMultipartUpload` |
+| `app/Actions/SignMultipartPartAction.php` | Pre-signed PUT URL per part (30 min) |
+| `app/Actions/CompleteMultipartUploadAction.php` | `CompleteMultipartUpload` → `HeadObject` → `Share` |
+| `app/Actions/AbortMultipartUploadAction.php` | Cleanup on cancel |
+| `app/Actions/Concerns/ResolvesR2Client.php` | Grabs the `S3Client` off the default disk |
+
+**Shared**
+| File | Role |
+|---|---|
+| `app/Models/Share.php` | Share record + `reapable` scope + availability helpers |
+| `app/Actions/DownloadShareAction.php` | Streamed download + `lockForUpdate` counter |
+| `app/Console/Commands/SweepExpiredShares.php` | `php artisan shares:sweep` |
+| `app/Policies/SharePolicy.php` | `delete` authorization for the `/shares` page |
+| `resources/views/pages/⚡shares.blade.php` | Your shares, statuses, copy link, delete |
+| `resources/views/pages/⚡share.blade.php` | Public `/s/{uuid}` landing |
+| `routes/web.php` | Route layout — best single file for comparing the two paths |
+
+## Guest vs. signed-in
+
+| | Guest | Signed in |
+|---|---|---|
+| Max file size | 20 MB | no app-level cap |
+| Owner on share row | `user_id = null` | `user_id = auth()->id()` |
+| See your shares later | no | `/shares` |
+| Authorization | N/A | `SharePolicy@delete` |
+
+The 20 MB cap is checked server-side in both upload paths (`FinalizeUploadAction::GUEST_MAX_BYTES`). If a guest busts it, the assembled file is deleted and the endpoint returns `403`.
+
+## Expiration options
+
+Set on the upload form:
+
+- **1 / 7 / 30 days** — `expires_at` stamped; `SweepExpiredShares` deletes the file + row past that.
+- **One-time download** — `delete_after_first_download = true`; first `GET /s/{uuid}/download` marks it consumed (via `lockForUpdate` transaction), subsequent hits return `410`. Sweep deletes the file.
+
+## Setup
 
 ```bash
-git clone https://github.com/joshcirre/fission.git my-project
-cd my-project
 composer setup
 ```
 
-### Using Composer Create-Project
+That runs the Fission installer: deps, `.env`, app key, SQLite, migrations, Bun install, Vite build. Then:
 
 ```bash
-composer create-project joshcirre/fission my-project
-cd my-project
-composer setup
+composer dev   # server + queue + logs + vite
 ```
 
-> [!NOTE]
-> The `laravel new --using` flag is not recommended due to archive extraction issues with special characters in filenames.
+Head to `http://localhost:8000`.
 
-The `composer setup` command handles:
+**Local note on `/direct`:** the direct-to-R2 page will return `503` locally until you either (a) point the default disk at a real R2/S3 bucket, or (b) deploy to Laravel Cloud. That's intentional — there's no way to pre-sign a URL for a local filesystem. The chunking page on `/` works locally on the `local` disk.
 
-- Dependency installation
-- Environment configuration (.env)
-- Application key generation
-- SQLite database creation
-- Optional packages (Flux Pro, Filament, Bento, etc.)
-- Optional teams scaffolding (defaults to no during install)
-- Database migrations
-- Project name configuration
-- NPM dependency installation
-- Asset building
+## Deployment (Laravel Cloud)
 
-During installation, Fission will ask whether you want full teams support.
+1. **Attach a Laravel Object Storage bucket** to your environment. Cloud provisions an R2 bucket and injects `LARAVEL_CLOUD_DISK_CONFIG`, which registers it as a Laravel disk with whatever name you pick (e.g. `private`). Mark it the default so `Storage::disk()` resolves to R2.
+2. **Deploy.** Both upload paths work immediately — chunking writes `chunks/{uuid}/*` to R2 and assembles the final object via `writeStream()`; direct-to-R2 uses the SDK directly against the same bucket.
+3. **CORS — this is the part that bites people.** On the bucket's settings page:
+   - **Expose headers: `ETag`** (non-negotiable — the browser reads it off each direct-PUT response)
+   - **Allowed methods: `PUT`** (plus whatever else Cloud pre-selects)
+   - **Allowed origins:** Laravel Cloud auto-adds your env's domain; only add custom origins if you need local dev against the real bucket
+4. **Schedule the sweep.** `routes/console.php` already wires `shares:sweep` every 5 minutes; make sure the scheduler is running on Cloud.
 
-- Choose `yes` to keep team creation, switching, invitations, and member role management.
-- Choose `no` to remove the team-specific backend, routes, views, and tests before setup finishes.
+If `/direct` returns "The default disk '…' is not an R2 bucket," the default disk isn't an S3-compatible adapter — check `config('filesystems.default')` and the `LARAVEL_CLOUD_DISK_CONFIG` env var.
 
-### Working With Teams
-
-When teams are enabled, Fission follows the starter-kit pattern for team-aware features:
-
-- Store the active team on the user via `current_team_id` and switch context from the team switcher UI.
-- Put team-owned features under a team URL when the page itself is team-specific, for example `/{team}/playground`.
-- Model team-owned records with a `team_id` foreign key and query through the bound team, not globally.
-- Authorize access through team membership or team policies, for example `->can('view', 'team')` on routes.
-- Keep generic account pages like `/profile` unscoped unless the page is explicitly about a team.
-
-## Development
+## Tests & quality
 
 ```bash
-composer dev          # Start server, queue, logs, and Vite
+composer test      # typos + pest + pint --test + phpstan + rector dry-run
+composer fix       # phpstan + rector + pint + prettier
 ```
 
-### Code Quality
+Pest covers: public home, guest upload ≤ 20 MB, guest blocked > 20 MB, authed large upload, one-time share, missing-chunks 422, download happy path, expired 410, consumed 410, sweep command, delete-from-management, and `/direct` validation + 503 when no R2 is attached.
 
-Fission enforces strict code quality through automated tooling:
+## Stack
 
-```bash
-composer fix          # Fix everything: types, refactoring, formatting
-composer test         # Run all checks: tests, linting, types, refactoring
-```
-
-| Command             | Purpose                                              |
-| ------------------- | ---------------------------------------------------- |
-| `composer fix`      | PHPStan → Rector → Prettier → Pint                   |
-| `composer test`     | Typos → Pest → Lint check → PHPStan → Rector dry-run |
-| `composer lint`     | Pint + Prettier (quick format)                       |
-| `composer refactor` | Rector only                                          |
-
-### Individual Test Commands
-
-```bash
-composer test:unit          # Pest tests (parallel)
-composer test:unit:coverage # Pest with coverage
-composer test:types         # PHPStan analysis
-composer test:lint          # Check formatting (no fix)
-composer test:refactor      # Rector dry-run
-composer test:typos         # Peck typo checker
-```
-
-### Tooling Stack
-
-- **[Pest](https://pestphp.com)** - Testing framework
-- **[PHPStan](https://phpstan.org)** + Larastan - Static analysis (max level)
-- **[Rector](https://getrector.com)** - Automated refactoring
-- **[Pint](https://laravel.com/docs/pint)** - PHP code style (strict Laravel)
-- **[Prettier](https://prettier.io)** - JS/CSS formatting
-- **[Peck](https://github.com/peckphp/peck)** - Typo detection
-
-## Recommended AI Skills
-
-If you use [AI coding assistants](https://skills.sh) with this project, these skills provide useful context for the stack:
-
-| Skill | Install |
-|-------|---------|
-| **Flux UI Development** — Flux UI component usage, variants, and patterns | `npx skills add laravel/boost --skill fluxui-development` |
-| **Livewire Development** — Livewire 4 component patterns, directives, islands, and testing | `npx skills add spatie/freek.dev@livewire-development` |
-| **TweakFlux Theme Generator** — Generate custom Flux UI themes from descriptions or palettes | `tweakflux boost` (requires [joshcirre/tweakflux](https://github.com/joshcirre/tweakflux)) |
-| **Playwriter** — Control your actual Chrome browser from AI agents (requires [Chrome extension](https://playwriter.dev)) | Included in `.agents/skills/` · CLI: `npm i -g playwriter` |
-| **Expect CLI** — Adversarial browser testing for code changes (requires `npm i -g expect-cli`) | Included in `.agents/skills/` · Init: `npx -y expect-cli@latest init` |
+- PHP 8.4 · Laravel 12 · Livewire 4 (SFC with `⚡` prefix) · Livewire Flux Pro · Tailwind CSS v4
+- Pest 4 · PHPStan + Larastan · Rector · Pint
+- AWS SDK for PHP + `league/flysystem-aws-s3-v3` (for R2 on Cloud)
 
 ## License
 
-The Fission starter kit is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+MIT.
